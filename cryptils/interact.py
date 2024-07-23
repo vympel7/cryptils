@@ -1,7 +1,8 @@
 from pwn import remote, process
 import os
 
-class Interact(object):# {{{
+
+class Interact(object):
     def __init__(self, target: str, port: int = None) -> None:
         self.target = target
         self.port = port
@@ -65,4 +66,3 @@ class Interact(object):# {{{
 
         received = self.io.recvuntil(until)
         return received.strip() if strip else received
-# }}}
