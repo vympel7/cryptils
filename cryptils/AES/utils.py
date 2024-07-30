@@ -1,5 +1,4 @@
 from pwn import xor
-from interact import Interact
 from Crypto.Cipher import AES
 
 

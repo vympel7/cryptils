@@ -1,24 +1,24 @@
-from cryptils.AES.CBC import CBC
-from cryptils.interact import Interact
+from cryptils.AES.CBC import *
+from pwn import *
 
 io = None
 
 def enc(msg):
     global io
-    io.sla(b'> ', b'1')
-    io.sla(b': ', msg.hex().encode()); io.ru(b': ')
-    return bytes.fromhex(io.rl().strip().decode())
+    io.sendlineafter(b'> ', b'1')
+    io.sendlineafter(b': ', msg.hex().encode())
+    io.recvuntil(b': ')
+    return bytes.fromhex(io.recvline().strip().decode())
 
 def dec(msg):
     global io
-    io.sla(b'> ', b'2')
-    io.sla(b': ', msg.hex().encode()); io.ru(b': ')
-    return bytes.fromhex(io.rl().strip().decode())
+    io.sendlineafter(b'> ', b'2')
+    io.sendlineafter(b': ', msg.hex().encode())
+    io.recvuntil(b': ')
+    return bytes.fromhex(io.recvline().strip().decode())
 
 
 if __name__ == '__main__':
-    io = Interact('privateiv.challs.olicyber.it', 10021)
-    io.connect()
-    cbc = CBC()
-    key = cbc.key_equals_iv(enc, dec)
+    io = remote('privateiv.challs.olicyber.it', 10021)
+    key = recover_IV(enc, dec)
     print(key.decode())
