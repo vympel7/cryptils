@@ -1,9 +1,9 @@
 import numpy as np
 
-BLOCK_SIZE = 64
-KEY_SIZE = 64
-ROUND_KEY_SIZE = 48
-ROUNDS = 16
+DES_BLOCK_SIZE = 64
+DES_KEY_SIZE = 64
+DES_ROUND_KEY_SIZE = 48
+DES_ROUNDS = 16
 
 IP = np.array([
 58, 50, 42, 34, 26, 18, 10, 2,
@@ -38,7 +38,7 @@ E = np.array([
 28, 29, 30, 31, 32, 1
 ], dtype=np.uint8)
 
-Sboxes = np.array([
+DES_Sboxes = np.array([
 [
     [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
     [0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8],
