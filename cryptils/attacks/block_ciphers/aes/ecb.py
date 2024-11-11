@@ -1,5 +1,3 @@
-from .utils import *
-
 def chosen_prefix(encrypt_msg, alphabet, length = 32, blank_char = b'#', print_partial = False, known = b''):
     if not isinstance(alphabet, (bytes, bytearray)):
         alphabet = alphabet.encode()
