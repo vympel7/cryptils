@@ -6,7 +6,7 @@ from cryptils.utils import *
 class DES:# {{{
     def __init__(self, key, rounds=DES_ROUNDS):# {{{
         self.key = to_bits(key)
-        self.rounds = DES_ROUNDS
+        self.rounds = rounds
 
         if self.key.size != DES_KEY_SIZE:
             raise ValueError('Key should be 64 bits long.')
@@ -14,13 +14,13 @@ class DES:# {{{
         self.keys = self.key_schedule(self.rounds)# }}}
 
     def key_schedule(self, rounds):# {{{
-        keys = np.zeros((rounds, DES_ROUND_KEY_SIZE), dtype=np.uint8)
+        keys = np.empty((rounds, DES_ROUND_KEY_SIZE), dtype=np.uint8)
         permuted = block_permute(self.key, PC1)
 
         c, d = np.split(permuted, 2)
         for i in range(rounds):
-            c = shift_left(c, shifts[i])
-            d = shift_left(d, shifts[i])
+            c = np.roll(c, c.size - shifts[i])
+            d = np.roll(d, d.size - shifts[i])
             keys[i] = block_permute(np.concatenate((c, d)), PC2)
 
         return keys# }}}
@@ -34,7 +34,7 @@ class DES:# {{{
 
         val = DES_Sboxes[np.arange(DES_Sboxes.shape[0]), row, col] 
 
-        sub = np.zeros(DES_BLOCK_SIZE // 2, dtype=np.uint8)
+        sub = np.empty(DES_BLOCK_SIZE // 2, dtype=np.uint8)
 
         sub[0::4] = (val & 8) >> 3
         sub[1::4] = (val & 4) >> 2
@@ -46,7 +46,7 @@ class DES:# {{{
     def block_apply_function(self, block, r):# {{{
         block = block_permute(block, E)
 
-        block = block_xor(block, self.keys[r])
+        block = block ^ self.keys[r]
 
         block = self.block_substitute(block)
 
@@ -60,9 +60,9 @@ class DES:# {{{
         for i in range(self.rounds - 1):
             calculated = self.block_apply_function(right, i)
 
-            right, left = block_xor(left, calculated), right
+            right, left = left ^ calculated, right
 
-        left = block_xor(left, self.block_apply_function(right, self.rounds - 1))
+        left = left ^ self.block_apply_function(right, self.rounds - 1)
 
         final = np.concatenate((left, right))
 
@@ -76,7 +76,7 @@ class DES:# {{{
 
         nblocks = plaintext_bits.size // DES_BLOCK_SIZE
 
-        ciphertext_blocks = np.zeros((nblocks, DES_BLOCK_SIZE), dtype=np.uint8)
+        ciphertext_blocks = np.empty((nblocks, DES_BLOCK_SIZE), dtype=np.uint8)
 
         for i, block in enumerate(np.split(plaintext_bits, nblocks)):
             ciphertext_blocks[i] = self.block_encrypt(block)
@@ -88,12 +88,12 @@ class DES:# {{{
 
         left, right = np.split(block, 2)
 
-        left = block_xor(left, self.block_apply_function(right, self.rounds - 1))
+        left = left ^ self.block_apply_function(right, self.rounds - 1)
 
         for i in range(self.rounds - 2, -1, -1):
             calculated = self.block_apply_function(left, i)
 
-            right, left = left, block_xor(right, calculated)
+            right, left = left, right ^ calculated
 
         final = np.concatenate((left, right))
 
@@ -107,7 +107,7 @@ class DES:# {{{
 
         nblocks = ciphertext_bits.size // DES_BLOCK_SIZE
 
-        plaintext_blocks = np.zeros((nblocks, DES_BLOCK_SIZE), dtype=np.uint8)
+        plaintext_blocks = np.empty((nblocks, DES_BLOCK_SIZE), dtype=np.uint8)
 
         for i, block in enumerate(np.split(ciphertext_bits, nblocks)):
             plaintext_blocks[i] = self.block_decrypt(block)

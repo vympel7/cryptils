@@ -33,18 +33,3 @@ def block_permute(block, table, subtract=1):
     assert isinstance(block, np.ndarray) and isinstance(table, np.ndarray)
 
     return block[table - subtract].astype(np.uint8)
-
-def shift_right(arr, amount):
-    assert isinstance(arr, np.ndarray)
-
-    return np.roll(arr, amount)
-
-def shift_left(arr, amount):
-    assert isinstance(arr, np.ndarray)
-
-    return np.roll(arr, int(arr.size - amount))
-
-def block_xor(a, b):
-    assert isinstance(a, np.ndarray) and isinstance(b, np.ndarray)
-
-    return a ^ b

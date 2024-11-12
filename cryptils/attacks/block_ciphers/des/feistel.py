@@ -1,7 +1,9 @@
 from cryptils.implementations import *
 from cryptils.utils import *
+from itertools import product
+from functools import reduce
 
-def substitution_pre_images(image, sbox):
+def substitution_pre_images(image, sbox):# {{{
     indexes = np.where(sbox == image)
 
     rows = np.apply_along_axis(np.unpackbits, 0, indexes[0].astype(np.uint8))
@@ -17,33 +19,31 @@ def substitution_pre_images(image, sbox):
         [rows[6], *cols[12:16], rows[7]]
     ])
 
-    return pre_images
+    return pre_images# }}}
 
-def invert_permuted_choice2(key_parts):
-    inverted_choices = np.zeros((4, 56), dtype=np.uint8)
+def invert_permuted_choice2(key_parts, choices):# {{{
+    key_parts = np.array([key_part[c] for key_part, c in zip(key_parts, choices)]).flatten()
+
+    inverted_choices = np.zeros((56,), dtype=np.uint8)
     inverted_choices.fill(2)
 
     for i in range(56):
         if PC2_1[i] != 0:
-            x = (PC2_1[i] - 1) // 8
-            y = (PC2_1[i] - 1) % 6
-            inverted_choices[:, PC2_1[i] - 1] = key_parts[x][:, y]
+            inverted_choices[i] = key_parts[PC2_1[i] - 1]
 
-    return inverted_choices
+    return inverted_choices# }}}
 
-def invert_permuted_choice1(CDs):
-    inverted_choices = np.zeros((4, 64), dtype=np.uint8)
+def invert_permuted_choice1(CD):# {{{
+    inverted_choices = np.zeros((64,), dtype=np.uint8)
     inverted_choices.fill(2)
 
-    for i in range(64):
+    for i in range(63):
         if PC1_1[i] != 0:
-            x = PC1_1[i] - 1
-            inverted_choices[:, PC1_1[i] - 1] = CDs[:, x]
+            inverted_choices[i] = CD[PC1_1[i] - 1]
 
-    return inverted_choices
+    return inverted_choices# }}}
 
-
-def one_round(plaintext, ciphertext):
+def one_round(plaintext, ciphertext):# {{{
     plaintext_block = to_bits(plaintext)
     ciphertext_block = to_bits(ciphertext)
 
@@ -53,14 +53,14 @@ def one_round(plaintext, ciphertext):
     permuted_plaintext = block_permute(plaintext_block, IP)
     permuted_ciphertext = block_permute(ciphertext_block, IP)
 
-    L0, R0 = permuted_plaintext[:DES_BLOCK_SIZE // 2], permuted_plaintext[DES_BLOCK_SIZE // 2:]
-    L1, R1 = permuted_ciphertext[:DES_BLOCK_SIZE // 2], permuted_ciphertext[DES_BLOCK_SIZE // 2:]
+    L0, R0 = np.split(permuted_plaintext, 2)
+    L1, R1 = np.split(permuted_ciphertext, 2)
 
     function_output = L0 ^ L1
 
     anti_permuted_output = block_permute(function_output, P_1)
 
-    round_key_parts = np.zeros((8, 4, 6), dtype=np.uint8)
+    round_key_parts = np.empty((8, 4, 6), dtype=np.uint8)
 
     for i in np.arange(0, anti_permuted_output.size, 4):
         bits = anti_permuted_output[i:i+4]
@@ -68,20 +68,48 @@ def one_round(plaintext, ciphertext):
 
         expanded = block_permute(R0, E)
 
-        round_key_parts[i // 4] = pre_images ^ expanded[6 * i // 4:6 * (i + 1) // 4]
+        round_key_parts[i // 4] = pre_images ^ expanded[6 * i // 4:6 * (i + 4) // 4]
 
-    inverted_choices = invert_permuted_choice2(round_key_parts)
+    pchoices = np.fromiter(product(*([[0, 1, 2, 3]] * 8), repeat=1), dtype=np.dtype((np.uint8, 8)), count=4**8, like=np.empty((4**8, 8)))
 
-    C1s, D1s = inverted_choices[:, :28], inverted_choices[:, 28:]
+    round_keys = np.array([round_key_parts[np.arange(8), choices].flatten() for choices in pchoices])
 
-    C0s = np.apply_along_axis(lambda arr: np.roll(arr, shifts[0]), 1, C1s)
-    D0s = np.apply_along_axis(lambda arr: np.roll(arr, shifts[0]), 1, D1s)
+    return round_keys# }}}
 
-    CDs = np.concatenate((C0s, D0s), 1)
+    ''' Finding the actual 64 (56) bits key
+    max_choices = 256**1
 
-    keys = invert_permuted_choice1(CDs)
-    assert list(keys[0]).count(2) == 17 # (one too many?)
-    # CHECK INVERSE PERMUTED CHOICES
+    for choices in pchoices:
+        inverted_choices = invert_permuted_choice2(round_key_parts, choices=choices)
 
-    print(keys)
+        C1, D1 = inverted_choices[:28], inverted_choices[28:]
+
+        C0 = np.roll(C1, shifts[0])
+        D0 = np.roll(D1, shifts[0])
+
+        CD = np.concatenate((C0, D0))
+
+        key_bits = invert_permuted_choice1(CD)
+
+        bits_bruteforce = product(*([[0, 1]] * 8), repeat=1)
+
+        bits_bruteforce = np.fromiter(bits_bruteforce, dtype=np.dtype((np.uint8, 8)), count=256, like=np.empty((256, 8)))
+
+        keys = np.tile(key_bits, 256).reshape((256, 64))
+
+        twos = np.argwhere(keys == 2)[:, 1].reshape((256, 16))
+        twos = twos[(twos + 1) % 8 != 0].reshape((256, 8))
+
+        np.put_along_axis(keys, twos, bits_bruteforce, 1)
+
+        for i in np.arange(256):
+            for j in np.arange(0, 64, 8):
+                keys[i][j+7] = reduce(lambda x, y: x ^ y, keys[i][j:j+7]) ^ 1
+
+        keys = np.apply_along_axis(np.packbits, 1, keys)
+
+        max_choices -= 1
+        if max_choices == 0:
+            break
+    '''
 
