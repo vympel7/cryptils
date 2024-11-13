@@ -1,8 +1,8 @@
 from cryptils.implementations import *
 from cryptils.utils import *
 from itertools import product
-from functools import reduce
 
+# Possible pre images of sbox value
 def substitution_pre_images(image, sbox):# {{{
     indexes = np.where(sbox == image)
 
@@ -21,29 +21,45 @@ def substitution_pre_images(image, sbox):# {{{
 
     return pre_images# }}}
 
-def invert_permuted_choice2(key_parts, choices):# {{{
-    key_parts = np.array([key_part[c] for key_part, c in zip(key_parts, choices)]).flatten()
+# Sbox output (before permutation)
+def _from_LRs(top, bottom, last=False):# {{{
+    L0, R0 = np.split(top, 2)
+    L1, R1 = np.split(bottom, 2)
 
-    inverted_choices = np.zeros((56,), dtype=np.uint8)
-    inverted_choices.fill(2)
+    function_output = L0 ^ L1 if last else R1 ^ L0
 
-    for i in range(56):
-        if PC2_1[i] != 0:
-            inverted_choices[i] = key_parts[PC2_1[i] - 1]
+    return block_permute(function_output, P_1), R0# }}}
 
-    return inverted_choices# }}}
+def single_round(plaintext, ciphertext, _last_round=True):# {{{
+    plaintext_block = to_bits(plaintext)
+    ciphertext_block = to_bits(ciphertext)
 
-def invert_permuted_choice1(CD):# {{{
-    inverted_choices = np.zeros((64,), dtype=np.uint8)
-    inverted_choices.fill(2)
+    if ciphertext_block.size != DES_BLOCK_SIZE or plaintext_block.size != DES_BLOCK_SIZE:
+        raise ValueError('Ciphertext and plaintext should be exactly one DES block')
 
-    for i in range(63):
-        if PC1_1[i] != 0:
-            inverted_choices[i] = CD[PC1_1[i] - 1]
+    permuted_plaintext = block_permute(plaintext_block, IP)
+    permuted_ciphertext = block_permute(ciphertext_block, IP)
 
-    return inverted_choices# }}}
+    anti_permuted_output, R0 = _from_LRs(permuted_plaintext, permuted_ciphertext, _last_round)
 
-def one_round(plaintext, ciphertext):# {{{
+    round_key_parts = np.empty((8, 4, 6), dtype=np.uint8)
+
+    for i in np.arange(0, anti_permuted_output.size, 4):
+        bits = anti_permuted_output[i:i+4]
+
+        pre_images = substitution_pre_images(bits[0] * 8 + bits[1] * 4 + bits[2] * 2 + bits[3], DES_Sboxes[i // 4])
+
+        expanded = block_permute(R0, E)
+
+        round_key_parts[i // 4] = pre_images ^ expanded[6 * i // 4:6 * (i + 4) // 4]
+
+    pchoices = np.fromiter(product(*([[0, 1, 2, 3]] * 8), repeat=1), dtype=np.dtype((np.uint8, 8)), count=65536, like=np.empty((65536, 8)))
+
+    round_keys = np.array([round_key_parts[np.arange(8), choices].flatten() for choices in pchoices])
+
+    return round_keys# }}}
+
+def two_rounds(plaintext, ciphertext):# {{{
     plaintext_block = to_bits(plaintext)
     ciphertext_block = to_bits(ciphertext)
 
@@ -54,62 +70,17 @@ def one_round(plaintext, ciphertext):# {{{
     permuted_ciphertext = block_permute(ciphertext_block, IP)
 
     L0, R0 = np.split(permuted_plaintext, 2)
-    L1, R1 = np.split(permuted_ciphertext, 2)
+    L2, R2 = np.split(permuted_ciphertext, 2)
 
-    function_output = L0 ^ L1
+    L1, R1 = R0, R2
 
-    anti_permuted_output = block_permute(function_output, P_1)
+    middle = block_permute(np.concatenate((L1, R1)), IP_1)
 
-    round_key_parts = np.empty((8, 4, 6), dtype=np.uint8)
+    round1_keys = single_round(plaintext, bytes(np.packbits(middle)), _last_round=False)
 
-    for i in np.arange(0, anti_permuted_output.size, 4):
-        bits = anti_permuted_output[i:i+4]
-        pre_images = substitution_pre_images(bits[0] * 8 + bits[1] * 4 + bits[2] * 2 + bits[3], DES_Sboxes[i // 4])
+    middle = block_permute(np.concatenate((L1, R1)), IP_1)
 
-        expanded = block_permute(R0, E)
+    round2_keys = single_round(bytes(np.packbits(middle)), ciphertext, _last_round=True)
 
-        round_key_parts[i // 4] = pre_images ^ expanded[6 * i // 4:6 * (i + 4) // 4]
-
-    pchoices = np.fromiter(product(*([[0, 1, 2, 3]] * 8), repeat=1), dtype=np.dtype((np.uint8, 8)), count=4**8, like=np.empty((4**8, 8)))
-
-    round_keys = np.array([round_key_parts[np.arange(8), choices].flatten() for choices in pchoices])
-
-    return round_keys# }}}
-
-    ''' Finding the actual 64 (56) bits key
-    max_choices = 256**1
-
-    for choices in pchoices:
-        inverted_choices = invert_permuted_choice2(round_key_parts, choices=choices)
-
-        C1, D1 = inverted_choices[:28], inverted_choices[28:]
-
-        C0 = np.roll(C1, shifts[0])
-        D0 = np.roll(D1, shifts[0])
-
-        CD = np.concatenate((C0, D0))
-
-        key_bits = invert_permuted_choice1(CD)
-
-        bits_bruteforce = product(*([[0, 1]] * 8), repeat=1)
-
-        bits_bruteforce = np.fromiter(bits_bruteforce, dtype=np.dtype((np.uint8, 8)), count=256, like=np.empty((256, 8)))
-
-        keys = np.tile(key_bits, 256).reshape((256, 64))
-
-        twos = np.argwhere(keys == 2)[:, 1].reshape((256, 16))
-        twos = twos[(twos + 1) % 8 != 0].reshape((256, 8))
-
-        np.put_along_axis(keys, twos, bits_bruteforce, 1)
-
-        for i in np.arange(256):
-            for j in np.arange(0, 64, 8):
-                keys[i][j+7] = reduce(lambda x, y: x ^ y, keys[i][j:j+7]) ^ 1
-
-        keys = np.apply_along_axis(np.packbits, 1, keys)
-
-        max_choices -= 1
-        if max_choices == 0:
-            break
-    '''
+    return round1_keys, round2_keys# }}}
 
