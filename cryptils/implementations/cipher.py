@@ -1,7 +1,5 @@
-from .constants import *
+from constants import *
 from cryptils.utils import *
-
-# https://csrc.nist.gov/files/pubs/fips/46-3/final/docs/fips46-3.pdf
 
 class DES:# {{{
     def __init__(self, key, rounds=DES_ROUNDS):# {{{
@@ -9,7 +7,7 @@ class DES:# {{{
         self.rounds = rounds
 
         if self.key.size != DES_KEY_SIZE:
-            raise ValueError('Key should be 64 bits long.')
+            raise ValueError(f'Key should be {DES_KEY_SIZE} bits.')
 
         self.keys = self.key_schedule(self.rounds)# }}}
 
@@ -113,4 +111,90 @@ class DES:# {{{
             plaintext_blocks[i] = self.block_decrypt(block)
 
         return bytes(np.packbits(plaintext_blocks.flatten()))# }}}
+# }}}
+
+class AES:# {{{
+    def __init__(self, key, rounds=None):# {{{
+        self.key = to_bits(key)
+
+        self.xtimes = lambda a: (((a << 1) ^ 0x1b) & 0xff) if (a & 0x80) else (a << 1) 
+
+        if self.key.size not in AES_KEY_SIZES:
+            raise ValueError(f'Key should be {AES_KEY_SIZES} bits.')
+
+        self.rounds = AES_ROUNDS[AES_KEY_SIZES.index(self.key.size)] if rounds is None else rounds
+
+        self.keys = self.key_expansion(self.rounds)# }}}
+
+    def key_expansion(self, rounds):# {{{
+        Nk = self.key.size // 32
+        Nr = self.rounds
+
+        words = np.empty((Nr + 1, Nk, 4), dtype=np.uint8)
+        words[0] = np.array(np.split(np.packbits(self.key), Nk), dtype=np.uint8)
+
+        for i in np.arange(Nk, 4 * (Nr + 1)):
+            tmp = words[(i - 1) // Nk][(i - 1) % Nk]
+
+            if i % Nk == 0:
+                rotated = np.roll(tmp, 3)
+                tmp = np.array([AES_Sbox[byte] for byte in rotated], dtype=np.uint8) ^ AES_Rcon[(i // Nk) - 1]
+
+            elif Nk > 6 and i % Nk == 4:
+                tmp = np.array([AES_Sbox[byte] for byte in tmp], dtype=np.uint8)
+
+            words[i // Nk][i % Nk] = words[(i - Nk) // 4][(i - Nk) % 4] ^ tmp
+
+        return words# }}}
+
+    def add_round_key(self, block, r):# {{{
+        return self.keys[r].T ^ block# }}}
+
+    def sub_bytes(self, block):# {{{
+        return np.array([AES_Sbox[b] for b in block.flatten()], dtype=np.uint8).reshape((4, 4))# }}}
+
+    def shift_rows(self, block):# {{{
+        return np.array([np.roll(block[i], (0, 3, 2, 1)[i]) for i in np.arange(4)], dtype=np.uint8)# }}}
+
+    def mix_columns(self, block):# {{{
+        return np.stack([
+            np.array([
+                self.xtimes(col[0]) ^ (self.xtimes(col[1]) ^ col[1]) ^ col[2] ^ col[3],
+                col[0] ^ self.xtimes(col[1]) ^ (self.xtimes(col[2]) ^ col[2]) ^ col[3],
+                col[0] ^ col[1] ^ self.xtimes(col[2]) ^ (self.xtimes(col[3]) ^ col[3]),
+                (self.xtimes(col[0]) ^ col[0]) ^ col[1] ^ col[2] ^ self.xtimes(col[3]),
+                ], dtype=np.uint8)
+            for col in block.T], 1)# }}}
+
+    def block_encrypt(self, block):# {{{
+        state = np.packbits(block).reshape((4, 4)).astype(np.uint8).T
+
+        state = self.add_round_key(state, 0)
+
+        for r in np.arange(1, self.rounds):
+            state = self.sub_bytes(state)
+            state = self.shift_rows(state)
+            state = self.mix_columns(state)
+            state = self.add_round_key(state, r)
+
+        state = self.sub_bytes(state)
+        state = self.shift_rows(state)
+        state = self.add_round_key(state, self.rounds)
+
+        return state.T# }}}
+
+    def encrypt(self, plaintext):# {{{
+        plaintext_bits = to_bits(plaintext)
+
+        if plaintext_bits.size % AES_BLOCK_SIZE != 0:
+            raise ValueError('Input size should be divisible by %d' % (DES_BLOCK_SIZE,))
+
+        nblocks = plaintext_bits.size // AES_BLOCK_SIZE
+
+        ciphertext_blocks = np.empty((nblocks, AES_BLOCK_SIZE), dtype=np.uint8)
+
+        for i, block in enumerate(np.split(plaintext_bits, nblocks)):
+            ciphertext_blocks[i] = np.unpackbits(self.block_encrypt(block).flatten())
+
+        return bytes(np.packbits(ciphertext_blocks.flatten()))# }}}
 # }}}
