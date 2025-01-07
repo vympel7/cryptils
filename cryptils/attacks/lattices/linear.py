@@ -1,7 +1,7 @@
 from sage.all import *
 import numpy as np
 
-def shortest_vector_mod(weight, coefficients, targets, moduli):
+def shortest_vector_mod(weight, coefficients, targets, moduli, return_matrix=False):
     targets = np.array(targets)
     coefficients = np.array(coefficients)
     moduli = np.array(moduli)
@@ -27,6 +27,9 @@ def shortest_vector_mod(weight, coefficients, targets, moduli):
 
     vecs = (mat * W).LLL() / W
 
+    if return_matrix:
+        return vecs
+
     for vec in vecs:
         vals = vec[:nc // nt] * coefficients
         vals = [val % mod for val, mod in zip(vals, moduli)]
@@ -35,9 +38,9 @@ def shortest_vector_mod(weight, coefficients, targets, moduli):
 
     return None
 
-def shortest_vector(weight, coefficients, targets, moduli=None):
+def shortest_vector(weight, coefficients, targets, moduli=None, return_matrix=False):
     if moduli is not None:
-        return shortest_vector_mod(weight, coefficients, targets, moduli)
+        return shortest_vector_mod(weight, coefficients, targets, moduli, return_matrix)
 
     targets = np.array(targets)
     coefficients = np.array(coefficients)
@@ -62,8 +65,22 @@ def shortest_vector(weight, coefficients, targets, moduli=None):
 
     vecs = (mat * W).LLL() / W
 
+    if return_matrix:
+        return vecs
+
     for vec in vecs:
         if matrix(ZZ, 1, nt, vec[:nc // nt] * coefficients) == targets:
             return vec[:nc // nt]
 
     return None
+
+def babai(M, target):
+    target = vector(ZZ, target)
+
+    G = M.gram_schmidt()[0]
+    small = target
+    for _ in range(1):
+        for i in reversed(range(M.nrows())):
+            c = ((small * G[i]) / (G[i] * G[i])).round()
+            small -= M[i] * c
+    return target - small
