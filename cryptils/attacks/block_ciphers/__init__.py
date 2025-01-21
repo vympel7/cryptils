@@ -1,2 +1,1 @@
-from .aes import *
-from .des import *
+__all__ = ['aes', 'des']

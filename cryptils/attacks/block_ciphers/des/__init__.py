@@ -1,1 +1,1 @@
-from .feistel import *
+__all__ = ['feistel']

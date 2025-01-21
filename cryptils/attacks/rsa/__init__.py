@@ -1,1 +1,1 @@
-from .attacks import *
+__all__ = ['attacks']

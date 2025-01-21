@@ -1,2 +1,1 @@
-from .cbc import *
-from .ecb import *
+__all__ = ['ecb', 'cbc']

@@ -1,1 +1,1 @@
-from .linear import *
+__all__ = ['linear']
