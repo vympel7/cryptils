@@ -2,20 +2,19 @@ def chosen_prefix(encrypt_msg, alphabet, length = 32, blank_char = b'#', print_p
     if not isinstance(alphabet, (bytes, bytearray)):
         alphabet = alphabet.encode()
 
-    N = length - 1
-    blank = blank_char * N
+    blank = blank_char * (length - 1) 
     blank_cts = {}
-    for i in range(len(known), N):
+    for i in range(len(known), length):
         enc = encrypt_msg(blank.removesuffix(blank_char * i))
         blank_cts[i + 1] = enc[:length]
 
     if known != b'':
         blank = blank[:-len(known)]
 
-    plaintext = blank + known
-    for i in range(len(known), N):
+    plaintext = blank + blank_char + known
+    for i in range(len(known), len(plaintext)):
         for char in alphabet:
-            enc = encrypt_msg(plaintext + char.to_bytes(1))
+            enc = encrypt_msg(plaintext[1:] + char.to_bytes(1))
             if enc[:length] == blank_cts[i + 1]:
                 plaintext = plaintext[1:] + char.to_bytes(1)
                 break
