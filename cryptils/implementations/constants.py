@@ -1,6 +1,6 @@
 import numpy as np
 
-# DES {{{
+# DES
 DES_BLOCK_SIZE = 64
 DES_KEY_SIZE = 64
 DES_ROUND_KEY_SIZE = 48
@@ -154,7 +154,7 @@ PC2_1 = np.array([
 ], dtype=np.uint8)
 
 shifts = np.array([1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1], dtype=np.uint8)
-# }}}
+
 
 # AES
 AES_BLOCK_SIZE = 128

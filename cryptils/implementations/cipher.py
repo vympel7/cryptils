@@ -1,17 +1,17 @@
-from .constants import *
+from constants import *
 from cryptils.utils import *
 
-class DES:# {{{
-    def __init__(self, key, rounds=DES_ROUNDS):# {{{
+class DES:
+    def __init__(self, key, rounds=DES_ROUNDS):
         self.key = to_bits(key)
         self.rounds = rounds
 
         if self.key.size != DES_KEY_SIZE:
             raise ValueError(f'Key should be {DES_KEY_SIZE} bits.')
 
-        self.keys = self.key_schedule(self.rounds)# }}}
+        self.keys = self.key_schedule(self.rounds)
 
-    def key_schedule(self, rounds):# {{{
+    def key_schedule(self, rounds):
         keys = np.empty((rounds, DES_ROUND_KEY_SIZE), dtype=np.uint8)
         permuted = block_permute(self.key, PC1)
 
@@ -21,9 +21,9 @@ class DES:# {{{
             d = np.roll(d, d.size - shifts[i])
             keys[i] = block_permute(np.concatenate((c, d)), PC2)
 
-        return keys# }}}
+        return keys
 
-    def block_substitute(self, block):# {{{
+    def block_substitute(self, block):
         bits = np.split(block, block.size // 6)
         bits = np.array(bits)
 
@@ -39,18 +39,18 @@ class DES:# {{{
         sub[2::4] = (val & 2) >> 1
         sub[3::4] = (val & 1)
 
-        return sub# }}}
+        return sub
 
-    def block_apply_function(self, block, r):# {{{
+    def block_apply_function(self, block, r):
         block = block_permute(block, E)
 
         block = block ^ self.keys[r]
 
         block = self.block_substitute(block)
 
-        return block_permute(block, P)# }}}
+        return block_permute(block, P)
 
-    def block_encrypt(self, block):# {{{
+    def block_encrypt(self, block):
         block = block_permute(block, IP)
 
         left, right = np.split(block, 2)
@@ -64,9 +64,9 @@ class DES:# {{{
 
         final = np.concatenate((left, right))
 
-        return block_permute(final, IP_1)# }}}
+        return block_permute(final, IP_1)
 
-    def encrypt(self, plaintext):# {{{
+    def encrypt(self, plaintext):
         plaintext_bits = to_bits(plaintext)
 
         if plaintext_bits.size % DES_BLOCK_SIZE != 0:
@@ -79,9 +79,9 @@ class DES:# {{{
         for i, block in enumerate(np.split(plaintext_bits, nblocks)):
             ciphertext_blocks[i] = self.block_encrypt(block)
 
-        return bytes(np.packbits(ciphertext_blocks.flatten()))# }}}
+        return bytes(np.packbits(ciphertext_blocks.flatten()))
 
-    def block_decrypt(self, block):# {{{
+    def block_decrypt(self, block):
         block = block_permute(block, IP)
 
         left, right = np.split(block, 2)
@@ -95,9 +95,9 @@ class DES:# {{{
 
         final = np.concatenate((left, right))
 
-        return block_permute(final, IP_1, 1)# }}}
+        return block_permute(final, IP_1, 1)
 
-    def decrypt(self, ciphertext):# {{{
+    def decrypt(self, ciphertext):
         ciphertext_bits = to_bits(ciphertext)
 
         if ciphertext_bits.size % DES_BLOCK_SIZE != 0:
@@ -110,11 +110,11 @@ class DES:# {{{
         for i, block in enumerate(np.split(ciphertext_bits, nblocks)):
             plaintext_blocks[i] = self.block_decrypt(block)
 
-        return bytes(np.packbits(plaintext_blocks.flatten()))# }}}
-# }}}
+        return bytes(np.packbits(plaintext_blocks.flatten()))
 
-class AES:# {{{
-    def __init__(self, key, rounds=None):# {{{
+
+class AES:
+    def __init__(self, key, rounds=None):
         self.key = to_bits(key)
 
         self.xtimes = lambda a: (((a << 1) ^ 0x1b) & 0xff) if (a & 0x80) else (a << 1) 
@@ -124,9 +124,9 @@ class AES:# {{{
 
         self.rounds = AES_ROUNDS[AES_KEY_SIZES.index(self.key.size)] if rounds is None else rounds
 
-        self.keys = self.key_expansion(self.rounds)# }}}
+        self.keys = self.key_expansion(self.rounds)
 
-    def key_expansion(self, rounds):# {{{
+    def key_expansion(self, rounds):
         Nk = self.key.size // 32
         Nr = self.rounds
 
@@ -145,18 +145,18 @@ class AES:# {{{
 
             words[i // Nk][i % Nk] = words[(i - Nk) // 4][(i - Nk) % 4] ^ tmp
 
-        return words# }}}
+        return words
 
-    def add_round_key(self, block, r):# {{{
-        return self.keys[r].T ^ block# }}}
+    def add_round_key(self, block, r):
+        return self.keys[r].T ^ block
 
-    def sub_bytes(self, block):# {{{
-        return np.array([AES_Sbox[b] for b in block.flatten()], dtype=np.uint8).reshape((4, 4))# }}}
+    def sub_bytes(self, block):
+        return np.array([AES_Sbox[b] for b in block.flatten()], dtype=np.uint8).reshape((4, 4))
 
-    def shift_rows(self, block):# {{{
-        return np.array([np.roll(block[i], (0, 3, 2, 1)[i]) for i in np.arange(4)], dtype=np.uint8)# }}}
+    def shift_rows(self, block):
+        return np.array([np.roll(block[i], (0, 3, 2, 1)[i]) for i in np.arange(4)], dtype=np.uint8)
 
-    def mix_columns(self, block):# {{{
+    def mix_columns(self, block):
         return np.stack([
             np.array([
                 self.xtimes(col[0]) ^ (self.xtimes(col[1]) ^ col[1]) ^ col[2] ^ col[3],
@@ -164,9 +164,9 @@ class AES:# {{{
                 col[0] ^ col[1] ^ self.xtimes(col[2]) ^ (self.xtimes(col[3]) ^ col[3]),
                 (self.xtimes(col[0]) ^ col[0]) ^ col[1] ^ col[2] ^ self.xtimes(col[3]),
                 ], dtype=np.uint8)
-            for col in block.T], 1)# }}}
+            for col in block.T], 1)
 
-    def block_encrypt(self, block):# {{{
+    def block_encrypt(self, block):
         state = np.packbits(block).reshape((4, 4)).astype(np.uint8).T
 
         state = self.add_round_key(state, 0)
@@ -181,13 +181,13 @@ class AES:# {{{
         state = self.shift_rows(state)
         state = self.add_round_key(state, self.rounds)
 
-        return state.T# }}}
+        return state.T
 
-    def encrypt(self, plaintext):# {{{
+    def encrypt_ecb(self, plaintext):
         plaintext_bits = to_bits(plaintext)
 
         if plaintext_bits.size % AES_BLOCK_SIZE != 0:
-            raise ValueError('Input size should be divisible by %d' % (DES_BLOCK_SIZE,))
+            raise ValueError('Input size should be divisible by %d' % (AES_BLOCK_SIZE,))
 
         nblocks = plaintext_bits.size // AES_BLOCK_SIZE
 
@@ -196,5 +196,24 @@ class AES:# {{{
         for i, block in enumerate(np.split(plaintext_bits, nblocks)):
             ciphertext_blocks[i] = np.unpackbits(self.block_encrypt(block).flatten())
 
-        return bytes(np.packbits(ciphertext_blocks.flatten()))# }}}
-# }}}
+        return bytes(np.packbits(ciphertext_blocks.flatten()))
+
+    def encrypt_cbc(self, plaintext, iv):
+        plaintext_bits = to_bits(plaintext)
+        iv_bits = to_bits(iv)
+
+        if plaintext_bits.size % AES_BLOCK_SIZE != 0:
+            raise ValueError('Input size should be divisible by %d' % (AES_BLOCK_SIZE,))
+
+        if iv_bits.size != AES_BLOCK_SIZE:
+            raise ValueError('IV should be exactly %d bits' % (AES_BLOCK_SIZE,))
+
+        nblocks = plaintext_bits.size // AES_BLOCK_SIZE
+
+        ciphertext_blocks = np.empty((nblocks, AES_BLOCK_SIZE), dtype=np.uint8)
+
+        ciphertext_blocks[0] = np.unpackbits(self.block_encrypt(iv_bits ^ plaintext_bits[:AES_BLOCK_SIZE]).flatten())
+        for i, block in enumerate(np.split(plaintext_bits[AES_BLOCK_SIZE:], nblocks - 1)):
+            ciphertext_blocks[i + 1] = np.unpackbits(self.block_encrypt(block ^ ciphertext_blocks[i]).flatten())
+
+        return bytes(np.packbits(ciphertext_blocks.flatten()))
