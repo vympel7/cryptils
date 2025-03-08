@@ -3,7 +3,7 @@ from cryptils.utils import *
 from itertools import product
 
 # Possible pre images of sbox value
-def substitution_pre_images(image, sbox):# {{{
+def substitution_pre_images(image, sbox):
     indexes = np.where(sbox == image)
 
     rows = np.apply_along_axis(np.unpackbits, 0, indexes[0].astype(np.uint8))
@@ -19,18 +19,18 @@ def substitution_pre_images(image, sbox):# {{{
         [rows[6], *cols[12:16], rows[7]]
     ])
 
-    return pre_images# }}}
+    return pre_images
 
 # Sbox output (before permutation)
-def _from_LRs(top, bottom, last=False):# {{{
+def _from_LRs(top, bottom, last=False):
     L0, R0 = np.split(top, 2)
     L1, R1 = np.split(bottom, 2)
 
     function_output = L0 ^ L1 if last else R1 ^ L0
 
-    return block_permute(function_output, P_1), R0# }}}
+    return block_permute(function_output, P_1), R0
 
-def single_round(plaintext, ciphertext, _last_round=True):# {{{
+def single_round(plaintext, ciphertext, _last_round=True):
     plaintext_block = to_bits(plaintext)
     ciphertext_block = to_bits(ciphertext)
 
@@ -57,9 +57,9 @@ def single_round(plaintext, ciphertext, _last_round=True):# {{{
 
     round_keys = np.array([round_key_parts[np.arange(8), choices].flatten() for choices in pchoices])
 
-    return round_keys# }}}
+    return round_keys
 
-def two_rounds(plaintext, ciphertext):# {{{
+def two_rounds(plaintext, ciphertext):
     plaintext_block = to_bits(plaintext)
     ciphertext_block = to_bits(ciphertext)
 
@@ -82,5 +82,5 @@ def two_rounds(plaintext, ciphertext):# {{{
 
     round2_keys = single_round(bytes(np.packbits(middle)), ciphertext, _last_round=True)
 
-    return round1_keys, round2_keys# }}}
+    return round1_keys, round2_keys
 
