@@ -1,5 +1,5 @@
 from constants import *
-from cryptils.utils import *
+from utils import *
 
 class DES:
     def __init__(self, key, rounds=DES_ROUNDS):
@@ -117,8 +117,6 @@ class AES:
     def __init__(self, key, rounds=None):
         self.key = to_bits(key)
 
-        self.xtimes = lambda a: (((a << 1) ^ 0x1b) & 0xff) if (a & 0x80) else (a << 1) 
-
         if self.key.size not in AES_KEY_SIZES:
             raise ValueError(f'Key should be {AES_KEY_SIZES} bits.')
 
@@ -159,10 +157,26 @@ class AES:
     def mix_columns(self, block):
         return np.stack([
             np.array([
-                self.xtimes(col[0]) ^ (self.xtimes(col[1]) ^ col[1]) ^ col[2] ^ col[3],
-                col[0] ^ self.xtimes(col[1]) ^ (self.xtimes(col[2]) ^ col[2]) ^ col[3],
-                col[0] ^ col[1] ^ self.xtimes(col[2]) ^ (self.xtimes(col[3]) ^ col[3]),
-                (self.xtimes(col[0]) ^ col[0]) ^ col[1] ^ col[2] ^ self.xtimes(col[3]),
+                xtime(col[0]) ^ (xtime(col[1]) ^ col[1]) ^ col[2] ^ col[3],
+                col[0] ^ xtime(col[1]) ^ (xtime(col[2]) ^ col[2]) ^ col[3],
+                col[0] ^ col[1] ^ xtime(col[2]) ^ (xtime(col[3]) ^ col[3]),
+                (xtime(col[0]) ^ col[0]) ^ col[1] ^ col[2] ^ xtime(col[3]),
+                ], dtype=np.uint8)
+            for col in block.T], 1)
+
+    def inv_sub_bytes(self, block):
+        return np.fromiter((np.where(AES_Sbox == b)[0][0] for b in block.flatten()), dtype=np.uint8).reshape((4, 4))
+
+    def inv_shift_rows(self, block):
+        return np.array([np.roll(block[i], (0, 1, 2, 3)[i]) for i in np.arange(4)], dtype=np.uint8)
+
+    def inv_mix_columns(self, block):
+        return np.stack([
+            np.array([
+                gf_mul(col[0], 0xe) ^ gf_mul(col[1], 0xb) ^ gf_mul(col[2], 0xd) ^ gf_mul(col[3], 0x9),
+                gf_mul(col[0], 0x9) ^ gf_mul(col[1], 0xe) ^ gf_mul(col[2], 0xb) ^ gf_mul(col[3], 0xd),
+                gf_mul(col[0], 0xd) ^ gf_mul(col[1], 0x9) ^ gf_mul(col[2], 0xe) ^ gf_mul(col[3], 0xb),
+                gf_mul(col[0], 0xb) ^ gf_mul(col[1], 0xd) ^ gf_mul(col[2], 0x9) ^ gf_mul(col[3], 0xe),
                 ], dtype=np.uint8)
             for col in block.T], 1)
 
@@ -217,3 +231,36 @@ class AES:
             ciphertext_blocks[i + 1] = np.unpackbits(self.block_encrypt(block ^ ciphertext_blocks[i]).flatten())
 
         return bytes(np.packbits(ciphertext_blocks.flatten()))
+
+
+    def block_decrypt(self, block):
+        state = np.packbits(block).reshape((4, 4)).astype(np.uint8).T
+
+        state = self.add_round_key(state, self.rounds)
+
+        for r in np.arange(self.rounds - 1, 0, -1):
+            state = self.inv_shift_rows(state)
+            state = self.inv_sub_bytes(state)
+            state = self.add_round_key(state, r)
+            state = self.inv_mix_columns(state)
+
+        state = self.inv_shift_rows(state)
+        state = self.inv_sub_bytes(state)
+        state = self.add_round_key(state, 0)
+
+        return state.T
+
+    def decrypt_ecb(self, ciphertext):
+        ciphertext_bits = to_bits(ciphertext)
+
+        if ciphertext_bits.size % AES_BLOCK_SIZE != 0:
+            raise ValueError('Input size should be divisible by %d' % (AES_BLOCK_SIZE,))
+
+        nblocks = ciphertext_bits.size // AES_BLOCK_SIZE
+
+        plaintext_blocks = np.empty((nblocks, AES_BLOCK_SIZE), dtype=np.uint8)
+
+        for i, block in enumerate(np.split(ciphertext_bits, nblocks)):
+            plaintext_blocks[i] = np.unpackbits(self.block_decrypt(block).flatten())
+
+        return bytes(np.packbits(plaintext_blocks.flatten()))

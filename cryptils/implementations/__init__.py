@@ -1,1 +1,1 @@
-__all__ = ['cipher', 'constants']
+__all__ = ['cipher', 'constants', 'utils']
