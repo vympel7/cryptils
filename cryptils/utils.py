@@ -20,16 +20,3 @@ def xor(a, b):
 def blockify(data, block_size: int = 16, offset: int = 0, ignore_last: int = 0):
     ignore_last = len(data) if ignore_last == 0 else len(data) - ignore_last
     return [data[i:min(i + block_size, ignore_last)] for i in range(offset, len(data), block_size)]
-
-def to_bits(data):
-    assert isinstance(data, (bytes, bytearray))
-
-    data_array = np.frombuffer(data, dtype=np.uint8)
-
-    bits = (data_array[:, np.newaxis] >> np.arange(7, -1, -1)) & 1
-    return bits.flatten()
-
-def block_permute(block, table, subtract=1):
-    assert isinstance(block, np.ndarray) and isinstance(table, np.ndarray)
-
-    return block[table - subtract].astype(np.uint8)
