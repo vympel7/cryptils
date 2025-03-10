@@ -1,5 +1,5 @@
-from constants import *
-from utils import *
+from .constants import *
+from .utils import *
 
 class DES:
     def __init__(self, key, rounds=DES_ROUNDS):
